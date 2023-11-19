@@ -1,1 +1,2 @@
-# elan
+# ELAN (Energy LANdscape)
+
