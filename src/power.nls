@@ -1,0 +1,115 @@
+;-----------------------------------------------------------------------------------;
+;--------------------------   POWER DEMAND / FEED-IN   -----------------------------;
+;-----------------------------------------------------------------------------------;
+
+to calculate-power-demand
+  ask demand-centres [
+    ifelse (ticks mod 2 = 0) [
+      set power-demand (baseline-winter-demand + epsilon)
+    ][
+      set power-demand (baseline-summer-demand + epsilon)]
+  ]
+  set total-power-demand precision (sum [power-demand] of demand-centres) 2
+end
+
+to calculate-power-feedin
+  ask wind-plants [
+    set feedin-max [y-wind] of patch-here
+  ]
+
+  ask solar-plants [
+    set feedin-max [y-solar] of patch-here
+  ]
+
+  let max-power-feedin precision ( (sum [feedin-max] of (turtle-set wind-plants solar-plants conventionals)) ) 2 
+  
+  let feedin-max-renewables (sum [feedin-max] of wind-plants + sum [feedin-max] of solar-plants)
+  
+  if (max-power-feedin < total-power-demand) [
+    ask (turtle-set wind-plants solar-plants conventionals) [
+      set feedin feedin-max
+    ]
+  ]
+
+  if (max-power-feedin = total-power-demand) [
+    ask (turtle-set wind-plants solar-plants conventionals) [
+      set feedin feedin-max
+    ]
+  ]
+
+  if (max-power-feedin > total-power-demand) [
+    if (feedin-max-renewables > total-power-demand) [
+
+      ask conventionals  [
+        set feedin 0
+      ]
+
+      let reduction 0
+      let difference (feedin-max-renewables - total-power-demand)
+
+      ask (turtle-set wind-plants solar-plants) [
+       ifelse reduction < difference [
+         ifelse ((reduction + feedin-max) > difference) [
+           let temp (difference - reduction)
+           set reduction reduction + temp
+           set feedin (feedin-max - temp)
+         ][
+           set reduction reduction + feedin-max
+           set feedin 0
+         ]
+       ][
+          set feedin feedin-max
+        ]
+      ]
+    ]
+
+    if (feedin-max-renewables = total-power-demand) [
+      ask conventionals  [
+        set feedin 0
+      ]
+
+      ask wind-plants  [
+        set feedin feedin-max
+      ]
+
+      ask solar-plants  [
+        set feedin feedin-max
+      ]
+    ]
+
+    if (feedin-max-renewables < total-power-demand) [
+     ask wind-plants  [
+        set feedin feedin-max
+      ]
+
+      ask solar-plants [
+        set feedin feedin-max
+      ]
+
+      let difference-conv (total-power-demand - feedin-max-renewables)
+
+      if (any? conventionals) [
+        ask conventionals [
+          if (difference-conv - feedin-max) < 0 [
+            set feedin difference-conv
+            set difference-conv 0
+            stop
+          ]
+          if (difference-conv - feedin-max) = 0 [
+            set feedin feedin-max
+            set difference-conv 0
+            stop
+          ]
+          if (difference-conv - feedin-max) > 0 [
+            set feedin feedin-max
+            set difference-conv (difference-conv - feedin-max)
+          ]
+        ]
+      ]
+    ] 
+  ]
+  set feedin-solar precision( (sum [feedin] of solar-plants) ) 2
+  set feedin-wind precision( (sum [feedin] of wind-plants) ) 2
+  set feedin-conv precision( (sum [feedin] of conventionals) ) 2
+  set sum-power-feedin precision( (feedin-conv + feedin-wind + feedin-solar) ) 2
+end

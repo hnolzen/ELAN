@@ -1,0 +1,112 @@
+;-----------------------------------------------------------------------------------;
+; ----------------------------------   WELFARE   -----------------------------------;
+;-----------------------------------------------------------------------------------;
+
+to-report welfare
+  report sum welfare-region
+end
+
+to-report welfare-full
+  report sum welfare-full-region
+end
+
+to-report calculate-welfare-region
+ let w-all []
+ let w-wind 0
+ let w-solar 0
+ let w-conv 0
+ let v-exp 0
+ let v-imp 0
+ let exp-imp net-export-region
+
+ let i 1
+ while [i <= 9] [
+   set v-exp 0
+   set v-imp 0
+
+   set w-wind ((wtp - c-wind) * sum [feedin] of wind-plants with [area-number = i])
+   set w-solar ((wtp - c-solar) * sum [feedin] of solar-plants with [area-number = i])
+   set w-conv ((wtp - c-conv) * sum [feedin] of conventionals with [area-number = i])
+
+   ifelse (item (i - 1) exp-imp >= 0) [
+     set v-imp 0
+     set v-exp (item (i - 1) exp-imp) * (wtp - power-price)
+   ][
+     set v-exp 0
+     set v-imp (item (i - 1) exp-imp) * (power-price - c-wind)
+   ]
+
+   set w-all lput (precision ((w-wind + w-solar + w-conv + v-exp + v-imp) / 100) 2) w-all
+   set i (i + 1)
+ ]
+ report w-all
+end
+
+to-report calculate-welfare-full-region
+ let w-full-region []
+ let w-all 0
+ let w-wind 0
+ let w-solar 0
+ let w-conv 0
+ let v-exp 0
+ let v-imp 0
+ let exp-imp net-export-region
+ let econ-costs-region 0
+  
+ let i 1
+ while [i <= 9] [
+   set v-exp 0
+   set v-imp 0
+
+   set w-wind ((wtp - c-wind) * sum [feedin] of wind-plants with [area-number = i])
+   set w-solar ((wtp - c-solar) * sum [feedin] of solar-plants with [area-number = i])
+   set w-conv ((wtp - c-conv) * sum [feedin] of conventionals with [area-number = i])
+
+   ifelse (item (i - 1) exp-imp >= 0) [
+     set v-imp 0
+     set v-exp (item (i - 1) exp-imp) * (wtp - power-price)
+   ][
+     set v-exp 0
+     set v-imp (item (i - 1) exp-imp) * (power-price - c-wind)
+   ]
+
+   set w-all (precision ((w-wind + w-solar + w-conv + v-exp + v-imp) / 100) 2)
+   set econ-costs-region (item (i - 1) alpha-regions * item (i - 1) oc-land-reg)
+   set w-full-region lput (precision (w-all - econ-costs-region) 2) w-full-region
+   set i (i + 1)
+  ]
+  report w-full-region
+end
+
+to-report net-export-region
+  let nettoexport []
+  set nettoexport (map [ [a b] -> precision (a - b) 2 ] feedin-region regional-own-demand)
+  report nettoexport
+end
+
+
+to-report feedin-region
+  let feedin-list []
+  let i 1
+  while [i <= 9] [
+    let regional-feedin 0
+    let regional-feedin-wind sum [feedin] of wind-plants with [area-number = i]
+    let regional-feedin-solar sum [feedin] of solar-plants with [area-number = i]
+    let regional-feedin-conv sum [feedin] of conventionals with [area-number = i]
+    set regional-feedin precision (regional-feedin-wind + regional-feedin-solar + regional-feedin-conv) 2
+    set feedin-list lput regional-feedin feedin-list
+    set i (i + 1)
+  ]
+  report feedin-list
+end
+
+to-report regional-own-demand
+  let own-demand-list []
+  let i 1
+  while [i <= 9] [
+    let own-demand sum [power-demand] of demand-centres with [area-number = i]
+    set own-demand-list lput own-demand own-demand-list
+    set i (i + 1)
+  ]
+  report own-demand-list
+end

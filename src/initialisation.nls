@@ -1,0 +1,493 @@
+;-----------------------------------------------------------------------------------;
+; -----------------------------------   SETUP   ------------------------------------;
+;-----------------------------------------------------------------------------------;
+
+to setup
+  clear-all
+  random-seed seed
+  setup-grid-cells
+  setup-power-grid
+  setup-regions
+  setup-demand-centres
+  setup-conventionals
+  setup-land-use
+  setup-meteorology
+  setup-expected-profit
+  setup-fairness
+  setup-welfare
+  setup-replace-mode
+  setup-power-feedin
+  setup-supply-security
+  setup-output-file
+  show-layer
+  reset-ticks
+end
+
+to setup-land-use
+  calculate-land-use
+end
+
+to setup-grid-cells
+  ask patches [
+    set pcolor white
+    set connected-to-grid? false
+    set dist-to-grid -1
+    set wind-plant-capacity patch-cap-wind
+    set solar-plant-capacity patch-cap-solar
+  ]
+end
+
+to setup-power-grid
+  let interval round (world-width / (number-vertical-lines + 1))
+  ask patches with [(pxcor + 1) mod interval = 0 or (pycor + 1) mod interval = 0] [
+    if (((pxcor + 1) / interval < number-vertical-lines + 1
+        and (pycor + 1) / interval < number-vertical-lines + 1)
+        or ((pxcor + 1 = world-width) and (pycor + 1) mod interval = 0)
+        or ((pycor + 1 = world-width) and (pxcor + 1) mod interval = 0)) [
+    set transmission-line? true
+    set dist-to-grid 0
+    set pcolor black
+    ]
+  ]
+  
+  let d1 0
+  repeat round (world-width / (number-vertical-lines + 1)) [
+    set d1 (d1 + 1)
+    ask patches with [dist-to-grid = d1 - 1] [
+      ask neighbors with [dist-to-grid = -1] [
+        set dist-to-grid d1
+      ]
+    ]
+  ]
+end
+
+to setup-regions
+  set alpha-regions []
+  let interval round (world-width / (number-vertical-lines + 1))
+
+  ifelse (load-alphas) [
+    let file-name (word "alphas.txt")
+    carefully [
+      file-open file-name
+    ][
+      print "Error: Could not open file! (alphas.txt)"
+    ]
+    set alpha-regions (read-from-string file-read-line)
+    file-close
+  ][
+    set alpha-regions n-values 9 [precision (random-float r-alpha) 2]
+    if (same-alphas) [set alpha-regions n-values 9 [r-alpha] ]
+    if (read-alpha) [set alpha-regions [0 0 0 0 0 0 3 3 3]]
+  ]
+
+  if (load-permutation) [
+    let file-name (word "alphapermutations.txt")
+    carefully [
+      file-open file-name
+    ][
+      print "Error: Could not open file! (alphapermutations.txt)"
+    ]
+    let i 1
+    while [i < p-number] [
+      show file-read-line
+      set i (i + 1)
+    ]
+    set alpha-regions (read-from-string file-read-line)
+    file-close
+  ]
+
+  ask patches [
+    if (pxcor >= 0 and pxcor < interval and 
+        pycor >= 0 and pycor < interval) [
+      set area-number 7
+    ]
+    if (pxcor >= interval and pxcor < interval * 2 and 
+        pycor >= 0 and pycor < interval) [
+      set area-number 8
+    ]
+    if (pxcor >= interval * 2 and pxcor < interval * 3 and 
+        pycor >= 0 and pycor < interval) [
+      set area-number 9
+    ]
+    if (pxcor >= 0 and pxcor < interval and pycor >= interval and 
+        pycor < interval * 2) [
+      set area-number 4
+    ]
+    if (pxcor >= interval and pxcor < interval * 2 and 
+        pycor >= interval and pycor < interval * 2) [
+      set area-number 5
+    ]
+    if (pxcor >= interval * 2 and pxcor < interval * 3 and 
+        pycor >= interval and pycor < interval * 2) [
+      set area-number 6
+    ]
+    if (pxcor >= 0 and pxcor < interval and 
+        pycor >= interval * 2 and pycor < interval * 3) [
+      set area-number 1
+    ]
+    if (pxcor >= interval and pxcor < interval * 2 and 
+        pycor >= interval * 2 and pycor < interval * 3) [
+      set area-number 2
+    ]
+    if (pxcor >= interval * 2 and pxcor < interval * 3 and 
+        pycor >= interval * 2 and pycor < interval * 3) [
+      set area-number 3
+    ]
+  ]
+  
+  set reg-taboo n-values 9 [global-taboo-radius]
+  if heterogenous-regions? [
+    let j 1
+    while [j <= 9] [
+      set reg-taboo lput (get-reg-taboo j) reg-taboo
+      set j (j + 1)
+    ]
+  ]
+
+  set welfare-full-reduction []
+  if (region-scenario = "optimisation w-vwl" or region-scenario = "regions w-vwl") [
+    let i 1
+    while [i <= 9] [
+      set welfare-full-reduction lput (item (i - 1) alpha-regions) welfare-full-reduction
+      set i (i + 1)
+    ]
+  ]
+
+  set reg-intervention n-values 9 [0]
+
+  set welfare-region []
+  set welfare-full-region []
+end
+
+to setup-demand-centres
+
+  if (demand-centre-setup = "load setup") [
+    let file-name (word "demand-centres.txt")
+    carefully [
+      file-open file-name
+    ][
+      print "Error: Could not open file! (demand-centres.txt)"
+    ]
+
+    while [not file-at-end?] [
+      let x-loc (read-from-string file-read-line)
+      let y-loc (read-from-string file-read-line)
+
+      ask patch x-loc y-loc [
+        add-demand-centre
+      ]
+    ]
+    file-close
+  ]
+
+  if (demand-centre-setup = "random setup") [
+    ask (n-of n-demand-centres patches with [count turtles-here = 0]) [
+      add-demand-centre
+    ]
+  ]
+
+  if (demand-centre-setup = "north") [
+    ask (n-of (n-demand-centres) patches with [
+      count turtles-here = 0 
+      and pxcor >= 20 and pxcor <= 75 
+      and pycor >= 75 and pycor <= 130]) [
+      add-demand-centre
+    ]
+  ]
+
+  if (demand-centre-setup = "south") [
+    ask (n-of (n-demand-centres) patches with [
+      count turtles-here = 0 
+      and pxcor >= 20 and pxcor <= 75 
+      and pycor >= 20 and pycor <= 75]) [
+      add-demand-centre
+    ]
+  ]
+
+  if (demand-centre-setup = "patchy") [
+    let number-patchy (n-demand-centres / 4)
+    ask (n-of number-patchy patches with [
+      count turtles-here = 0 
+      and pxcor >= 25 and pxcor <= 60 
+      and pycor >= 90 and pycor <= 125]) [
+      add-demand-centre
+    ]
+    ask (n-of number-patchy patches with [
+      count turtles-here = 0 
+      and pxcor >= 25 and pxcor <= 60 
+      and pycor >= 25 and pycor <= 60]) [
+      add-demand-centre
+    ]
+    ask (n-of number-patchy patches with [
+      count turtles-here = 0 
+      and pxcor >= 90 and pxcor <= 125 
+      and pycor >= 90 and pycor <= 125]) [
+      add-demand-centre
+    ]
+    ask (n-of number-patchy patches with [
+      count turtles-here = 0 
+      and pxcor >= 90 and pxcor <= 125 
+      and pycor >= 25 and pycor <= 60]) [
+      add-demand-centre
+    ]
+  ]
+
+   if (demand-centre-setup = "mixed") [
+    ask (n-of 75 patches with [
+      count turtles-here = 0 
+      and pxcor >= 10 and pxcor <= 30 
+      and pycor >= 75 and pycor <= 99]) [
+      add-demand-centre
+    ]
+    ask (n-of 55 patches with [
+      count turtles-here = 0 
+      and pxcor >= 65 and pxcor <= 80 
+      and pycor >= 65 and pycor <= 75]) [
+      add-demand-centre
+    ]
+    ask (n-of 30 patches with [
+      count turtles-here = 0 
+      and pxcor >= 20 and pxcor <= 35 
+      and pycor >= 30 and pycor <= 35]) [
+      add-demand-centre
+    ]
+    ask (n-of 110 patches with [
+      count turtles-here = 0 
+      and pxcor >= 85 and pxcor <= 115 
+      and pycor >= 95 and pycor <= 115]) [
+      add-demand-centre
+    ]
+    ask (n-of 25 patches with [
+      count turtles-here = 0 
+      and pxcor >= 105 and pxcor <= 115 
+      and pycor >= 2 and pycor <= 15]) [
+      add-demand-centre
+    ]
+    ask (n-of 50 patches with [
+      count turtles-here = 0 
+      and pxcor >= 70 and pxcor <= 85 
+      and pycor >= 10 and pycor <= 25]) [
+      add-demand-centre
+    ]
+    ask (n-of 25 patches with [
+      count turtles-here = 0 
+      and pxcor >= 135 and pxcor <= 145 
+      and pycor >= 120 and pycor <= 140]) [
+      add-demand-centre
+    ]
+    ask (n-of 30 patches with [
+      count turtles-here = 0 
+      and pxcor >= 130 and pxcor <= 140 
+      and pycor >= 55 and pycor <= 75]) [
+      add-demand-centre
+    ]
+    ask (n-of 100 patches with [count turtles-here = 0]) [
+      add-demand-centre
+    ]
+  ]
+end
+
+to add-demand-centre
+  sprout-demand-centres 1 [
+    set shape "circle"
+    set size 2
+    set color 2
+    set n-households number-households
+    set power-demand baseline-winter-demand + epsilon
+    
+    set taboo-radius global-taboo-radius
+    if heterogenous-regions? [
+      set taboo-radius get-reg-taboo area-number
+    ]  
+    ask patches in-radius taboo-radius [set taboo 1]
+  ]
+end
+
+to-report baseline-winter-demand
+  report (household-demand * number-households) / 1000 * 1.2
+end
+
+to-report baseline-summer-demand
+  report (household-demand * number-households) / 1000
+end
+
+to-report epsilon
+  report random-normal 0 sigma-fluctuation
+end
+
+to setup-conventionals
+  let power-demand-temp sum [power-demand] of demand-centres
+  ask patches with [count turtles-here = 0 and transmission-line? = true] [
+    if (power-demand-temp <= 0) [stop]
+    sprout-conventionals 1 [
+      set shape "circle"
+      set color brown
+      set size size-conventionals
+      set power-rating nameplate-capacity-conv
+      set feedin 0
+      set feedin-max (power-rating * availability / 1000 / 2)
+      set age 0
+      set operating-life operating-life-conv
+    ]
+    set power-demand-temp (power-demand-temp - ([feedin-max] of one-of conventionals))
+  ]
+end
+
+to setup-meteorology
+  ifelse (load-meteorology) [
+    let file-name (word "meteorology.txt")
+    carefully [
+      file-open file-name
+    ][
+      print "Error: Could not open file! (meteorology.txt)"
+    ]
+    repeat 22500 [
+      file-open file-name
+      ask patch (read-from-string file-read-line) (read-from-string file-read-line) [
+        set y-solar (read-from-string file-read-line)
+        set y-wind (read-from-string file-read-line)
+        set y-wind-summer (read-from-string file-read-line)
+        set y-wind-winter (read-from-string file-read-line)
+        set y-solar-summer (read-from-string file-read-line)
+        set y-solar-winter (read-from-string file-read-line)
+        set epsilon-wind (read-from-string file-read-line)
+        set epsilon-solar (read-from-string file-read-line)
+      ]
+    ]
+    file-close
+  ][
+    ask patches [
+      let rando random 2000
+      ifelse (rando <= pycor) [
+        set y-wind-summer precision ( (pycor / world-height) * y-wind-max          ) 2
+        set y-wind-winter precision ( (pycor / world-height) * y-wind-max * 1.2    ) 2
+      ][
+        set y-wind-summer 3.0
+        set y-wind-winter 3.6
+      ]
+
+      set epsilon-wind precision ( random-normal 0 sigma-epsilon-wind ) 2
+      set y-wind precision ( y-wind-winter + epsilon-wind ) 2
+      
+      let solar-rando random 250
+      ifelse (solar-rando >= pycor and any? demand-centres-here) [
+        set y-solar-summer precision ( (1 - pycor / world-height) * y-solar-max * 1.2  ) 2 
+        set y-solar-winter precision ( (1 - pycor / world-height) * y-solar-max        ) 2
+      ][
+        set y-solar-summer 3.6
+        set y-solar-winter 3
+      ]
+      set epsilon-solar precision ( random-normal 0 sigma-epsilon-solar ) 2
+      set y-solar precision ( y-solar-winter + epsilon-solar ) 2
+    ]
+  ]
+end
+  
+to setup-expected-profit
+  ask patches [
+    set net-costs precision ( (dist-to-grid / 49) * net-costs-weight ) 2
+    set net-costs-count? false
+    set g-wind precision ( (y-wind * rem-wind) - c-wind - (c-inv-wind / operating-life-wind) - net-costs) 2
+    set g-solar precision ( (y-solar * rem-solar) - c-solar - (c-inv-solar / operating-life-solar)) 2
+  ]
+  
+  if (region-scenario = "optimisation w-vwl" or region-scenario = "regions w-vwl") [
+    let i 1
+    while [i <= 9] [
+      ask patches with [area-number = i] [
+        let reduction item (i - 1) welfare-full-reduction
+        set g-wind precision (g-wind - reduction) 2
+      ]
+      set i (i + 1)
+    ]
+  ]
+end
+
+to setup-fairness
+  set fairness 1
+end
+
+to setup-welfare
+  set welfare-region calculate-welfare-region
+  set welfare-full-region calculate-welfare-full-region
+end
+
+to setup-replace-mode
+  set replace-mode? false
+  set replace-wind 0
+  set replace-solar 0
+end
+
+to setup-power-feedin
+  let initial-power-demand total-power-demand
+  set sum-power-feedin initial-power-demand
+  set feedin-conv initial-power-demand
+end
+
+to setup-supply-security
+  set supply-secure? true
+  set coverage 100
+end
+
+to setup-output-file
+  carefully [
+    file-delete "\\output\\temp\\output.txt"
+  ][
+    ;print "Warning: Could not delete file! (output.txt)"
+  ]
+
+  let file-name (word "\\output\\temp\\output.txt")
+  if (multi-temp-outputs?) [
+    set file-name (word "\\output\\temp\\output" date-and-time ".txt")
+  ]
+  file-open file-name
+  let header (word "tick")
+  set header word header ","
+  set header word header "sumDemand"
+  set header word header ","
+  set header word header "sumFeedin"
+  set header word header ","
+  set header word header "supplyPv"
+  set header word header ","
+  set header word header "supplyWind"
+  set header word header ","
+  set header word header "supplyConv"
+  set header word header ","
+  set header word header "numberConv"
+  set header word header ","
+  set header word header "numberPV"
+  set header word header ","
+  set header word header "numberWind"
+  set header word header ","
+  set header word header "coverage"
+  set header word header ","
+  set header word header "mismatchType"
+  set header word header ","
+  set header word header "availableLand"
+  set header word header ","
+  set header word header "occupiedLand"
+  set header word header ","
+  set header word header "welfare1"
+  set header word header ","
+  set header word header "welfare2"
+  set header word header ","
+  set header word header "welfare3"
+  set header word header ","
+  set header word header "welfare4"
+  set header word header ","
+  set header word header "welfare5"
+  set header word header ","
+  set header word header "welfare6"
+  set header word header ","
+  set header word header "welfare7"
+  set header word header ","
+  set header word header "welfare8"
+  set header word header ","
+  set header word header "welfare9"
+  set header word header ","
+  set header word header "welfareMarket"
+  set header word header ","
+  set header word header "welfareVwl"
+  file-print header
+  file-close
+end

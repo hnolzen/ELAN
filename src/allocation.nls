@@ -1,0 +1,144 @@
+;-----------------------------------------------------------------------------------;
+;--------------------------------   ALLOCATION   -----------------------------------;
+;-----------------------------------------------------------------------------------;
+
+to add-power-plants
+  if (replace-mode? = true)[
+    if (n-windplants <= equilibrium-wind) [
+      set replace-wind (equilibrium-wind - n-windplants)
+    ]
+    if (n-solarplants <= equilibrium-solar) [
+      set replace-solar (equilibrium-solar - n-solarplants)
+    ]
+    if (n-windplants > equilibrium-wind) [
+      set replace-wind 0
+    ]
+    if (n-solarplants > equilibrium-solar) [
+      set replace-solar 0
+    ]
+  ]
+
+  let max-new-wind (round (v-wind / 3))
+  let max-new-solar (round (v-solar / 3))
+
+  let available-wind-patches (patches with [(count wind-plants-here < patch-cap-wind) and (taboo = 0) and g-wind > 0])
+  let available-solar-patches (patches with [(count demand-centres-here > 0) and (count solar-plants-here < patch-cap-solar) and g-solar > 0])
+
+  ifelse (replace-mode? = true)[
+    if (count available-wind-patches >= replace-wind) [
+      ask max-n-of (replace-wind) available-wind-patches [g-wind] [
+        add-wind-plant
+      ]
+    ]
+    if (count available-solar-patches >= replace-solar) [
+      ask max-n-of (replace-solar) available-solar-patches [g-solar] [
+        add-solar-plant
+      ]
+    ]
+  ][
+    if (count available-wind-patches >= max-new-wind) [
+      ask max-n-of (max-new-wind) available-wind-patches [g-wind] [
+        add-wind-plant
+      ]
+    ]
+    if (count available-solar-patches >= max-new-solar) [
+      ask max-n-of (max-new-solar) available-solar-patches [g-solar][
+        add-solar-plant
+      ]
+    ]
+  ]
+  set n-solarplants (count solar-plants)
+  set n-windplants (count wind-plants)
+end
+
+to add-wind-plant
+  sprout-wind-plants 1 [
+    set shape "square"
+    ifelse (color-gradient?) [
+      let wph count wind-plants-here
+      ifelse (wph = 0) [
+        set color 109 ; 48
+      ][
+        ifelse (wph < patch-cap-wind) [
+          set color 107
+        ][
+          set color 105
+        ]
+      ]
+    ][
+      set color blue
+    ]
+    set size size-wind
+    set power-rating nameplate-capacity-wind
+    set feedin 0
+    set feedin-max y-wind
+    set age 0
+    set operating-life operating-life-wind
+    set connected-to-grid? true
+  ]
+end
+
+to add-solar-plant
+  sprout-solar-plants 1 [
+    set shape "circle"
+    set size size-solar
+    set power-rating nameplate-capacity-solar
+    set feedin 0
+    set feedin-max y-solar
+    set age 0
+    set operating-life operating-life-solar
+    draw-solar-color
+  ]
+end
+
+to draw-solar-color
+ ifelse (color-gradient?) [
+    ifelse (not any? solar-plants-here) [
+      set color solar-color
+      ask neighbors [set pcolor solar-color]
+    ][
+      let color-intensity count solar-plants-here
+      set color solar-color - (0.2 * color-intensity)
+      ask neighbors [set pcolor (solar-color - (0.2 * color-intensity))]
+    ]
+  ][
+    set color solar-color ; 48
+    ask neighbors [set pcolor solar-color]
+  ]
+end
+
+to remove-power-plants
+  ask (turtle-set wind-plants solar-plants) [
+    if (age > operating-life) [
+      die
+    ]
+  ]
+
+  set n-solarplants (count solar-plants)
+  set n-windplants (count wind-plants)
+
+  if ((ticks mod shutdown-time = 0) and (ticks > 0))[
+    if any? conventionals [
+      ask conventionals [
+        die
+      ]
+    ]
+  ]
+  set n-conventionals (count conventionals)
+end
+
+to replace-mode
+  let total-max-ren-feedin (sum [feedin-max] of (turtle-set wind-plants solar-plants))
+  let secure-coverage (n-demand-centres * (baseline-winter-demand + sigma-fluctuation))
+  
+  let renewable-mismatch-percent 0
+  if (total-power-demand > 0) [
+    set renewable-mismatch-percent (total-max-ren-feedin * 100 / secure-coverage)
+  ]
+  
+  if (renewable-mismatch-percent >= 100) [
+    set replace-mode? true
+    set equilibrium-wind (count wind-plants) + 1
+    set equilibrium-solar (count solar-plants) + 1
+  ]
+end

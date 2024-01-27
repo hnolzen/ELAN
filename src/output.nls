@@ -1,0 +1,135 @@
+;-----------------------------------------------------------------------------------;
+;--------------------------------   FILE OUTPUTS   ---------------------------------;
+;-----------------------------------------------------------------------------------;
+
+to print-landscape-statistics
+  let file-name (word "\\output\\landstat\\landstat.txt")
+  if (multi-temp-outputs?) [
+
+    set file-name (word "\\output\\landstat\\landstat" date-and-time ".txt")
+  ]
+  let output-list []
+  set output-list lput coverage output-list
+  set output-list lput sum-power-feedin output-list
+  set output-list lput sum-costs-transition output-list
+  set output-list lput disutility-land-consumption output-list
+  set output-list lput welfare output-list
+  set output-list lput welfare-full output-list
+  csv:to-file file-name (
+    list output-list
+  )
+end
+
+to print-region-statistics
+  let file-name (word "\\output\\regstat\\regstat.txt")
+  if (multi-temp-outputs?) [
+    set file-name (word "\\output\\regstat\\regstat" date-and-time ".txt")
+  ]
+  csv:to-file file-name (
+    list av-land-reg
+    oc-land-reg
+    n-dc-region
+    n-wind-region
+    n-solar-region
+    feedin-region
+    net-export-region
+    demand-region
+  )
+end
+
+to print-to-file
+  let file-name (word "\\output\\temp\\output.txt")
+  if (multi-temp-outputs?) [
+    set file-name (word "\\output\\temp\\output" date-and-time ".txt")
+  ]
+  file-open file-name
+  let output (word ticks ",")
+  set output word output total-power-demand
+  set output word output ","
+  set output word output sum-power-feedin
+  set output word output ","
+  set output word output feedin-solar
+  set output word output ","
+  set output word output feedin-wind
+  set output word output ","
+  set output word output feedin-conv
+  set output word output ","
+  set output word output n-conventionals
+  set output word output ","
+  set output word output n-solarplants
+  set output word output ","
+  set output word output n-windplants
+  set output word output ","
+  set output word output coverage
+  set output word output ","
+  set output word output mismatch-type
+  set output word output ","
+  set output word output available-land
+  set output word output ","
+  set output word output occupied-land
+  set output word output ","
+  set output word output item 0 welfare-full-region
+  set output word output ","
+  set output word output item 1 welfare-full-region
+  set output word output ","
+  set output word output item 2 welfare-full-region
+  set output word output ","
+  set output word output item 3 welfare-full-region
+  set output word output ","
+  set output word output item 4 welfare-full-region
+  set output word output ","
+  set output word output item 5 welfare-full-region
+  set output word output ","
+  set output word output item 6 welfare-full-region
+  set output word output ","
+  set output word output item 7 welfare-full-region
+  set output word output ","
+  set output word output item 8 welfare-full-region
+  set output word output ","
+  set output word output welfare
+  set output word output ","
+  set output word output welfare-full
+  file-print output
+  file-close
+end
+
+to save-alpha-permutations
+ carefully [
+   file-delete "alphapermutations.txt"
+ ][
+   print "Could not delete file! (alphapermutations.txt)"
+ ]
+ let file-name (word "alphapermutations.txt")
+ if (not file-exists? file-name) [
+    file-open file-name
+    file-print [0 0 0 0 0 0 0 0 0]
+    foreach permutations [2 0 0 0 0 0 0 0 0] [x -> file-print x]
+    foreach permutations [2 2 0 0 0 0 0 0 0] [x -> file-print x]
+    foreach permutations [2 2 2 0 0 0 0 0 0] [x -> file-print x]
+    foreach permutations [2 2 2 2 0 0 0 0 0] [x -> file-print x]
+    foreach permutations [2 2 2 2 2 0 0 0 0] [x -> file-print x]
+    foreach permutations [2 2 2 2 2 2 0 0 0] [x -> file-print x]
+    foreach permutations [2 2 2 2 2 2 2 0 0] [x -> file-print x]
+    foreach permutations [2 2 2 2 2 2 2 2 0] [x -> file-print x]
+    file-print [2 2 2 2 2 2 2 2 2]
+    file-close
+    print "Alpha permutations saved successfully!"
+  ]
+end
+
+to-report permutations [p-array]
+  let n length p-array
+  if (n = 0) [report p-array]
+  if (n = 1) [report (list p-array)]
+  if (n = 2) [report (list p-array reverse p-array)]
+  let result []
+  let idxs range n
+  foreach idxs [? ->
+    let xi item ? p-array
+    foreach (permutations remove-item ? p-array) [?? ->
+      set result lput (fput xi ??) result
+    ]
+  ]
+  set result remove-duplicates result
+  report result
+end
